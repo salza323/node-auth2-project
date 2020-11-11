@@ -1,53 +1,37 @@
 const express = require('express');
-const db = require('../data/db-config');
-const Users = require('./users-model');
+const bcrypt = require('bcryptjs');
 const router = express.Router();
 
-const bcrypt = require('bcryptjs');
+const db = require('../data/db-config');
+const Users = require('./users-model');
+const restricted = require('../auth/restricted-middleware');
 
 //put this middleware in a centralized location
-function secure(req, res, next) {
-  //check if there is a user in the session
-  if (req.session && req.session.user) {
-    next();
-  } else {
-    res.status(401).json({ message: 'unathorized' });
-  }
+// function secure(req, res, next) {
+//   //check if there is a user in the session
+//   if (req.session && req.session.user) {
+//     next();
+//   } else {
+//     res.status(401).json({ message: 'unathorized' });
+//   }
+// }
+
+function roleChecker(role) {
+  return function (req, res, next) {
+    if (req.decodedJwt.role === role) {
+      next();
+    } else {
+      res.status(401).json({ message: 'denied access' });
+    }
+  };
 }
 
-router.get('/users', secure, (req, res) => {
+router.get('/users', restricted, roleChecker(2), (req, res) => {
   Users.find()
     .then((users) => {
       res.status(200).json(users);
     })
     .catch((err) => res.send(err));
-});
-
-//need to polish up
-router.post('/register', async (req, res) => {
-  try {
-    const { username, password } = req.body;
-    const hash = bcrypt.hashSync(password, 10);
-    const user = { username, password: hash, role: 2 };
-    const addedUser = await Users.add(user);
-    res.json(addedUser);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-router.post('/login', async (req, res) => {
-  try {
-    const [user] = await Users.findBy({ username: req.body.username });
-    if (user && bcrypt.compareSync(req.body.password, user.password)) {
-      req.session.user = user;
-      res.json({ message: `Logged in!, ${user.username}` });
-    } else {
-      res.status(401).json({ message: 'You shall not pass!' });
-    }
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
 });
 
 module.exports = router;
